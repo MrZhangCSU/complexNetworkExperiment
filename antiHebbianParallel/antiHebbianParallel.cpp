@@ -22,7 +22,7 @@ using namespace std;
 #define SIZE        1000//(L*L)    /* number of sites                */
 #define MC_STEPS    61000   /* run-time in MCS     */
 #define K           0.1      /* temperature */
-#define MEMORY		2		// Memory of strategy  2,7,30
+#define MEMORY		7		// Memory of strategy  2,7,30
 #define NAMEOUT     "K4b075r5Q2"
 #define RANDOMIZE   3145215
 
@@ -184,7 +184,7 @@ void initial(void)
 	{
 		for(int j=0; j<MEMORY; j++)
 		{
-			player_memory[i][j] = player_s[i];
+			player_memory[i][j] = 0;
 		}
 	});
 }
@@ -234,7 +234,7 @@ void initialAdjacency(int proportion)
 		{
 			if (i != j)
 			{
-				if (randi(100*SIZE) < 8*proportion)							//冯诺依曼结构为5，高斯为9
+				if (randi(100*SIZE) < 8*proportion)							//冯诺依曼结构为5（4），摩尔为9（8）
 				//if(randi(SIZE) < 9)
 				{
 					player_adjacency[i][j] = 1;
@@ -333,7 +333,15 @@ void payoffCalculate(void)
 		player_payoff_virtual[i] = payoff_virtual(i);
 	});
 
-	
+	//更新记忆矩阵
+	static int count;
+	parallel_for(int(0), SIZE, [&](int k)
+	{
+		player_memory[k][count] = payoff(k);
+	});
+	count++;
+	if (count >= MEMORY)
+		count = 0;							
 
 }
 
@@ -407,6 +415,20 @@ void createLink(void)
 	double sumGain = 0.0;
 	double averageGain = 0.0;
 	double sumDelta = 0.0;	
+	double delt1, delt2 = 0.0;
+	double delt11, delt22 = 0.0;
+
+	//计算当前点和平均场差异的比值的累计和
+	for (int i = 0; i < SIZE; i++)
+	{
+		for (int j = 0; j < SIZE; j++)
+		{
+			delt1 = abs(player_payoff[i] - meanFieldPayoff);
+			delt2 = abs(player_payoff[j] - meanFieldPayoff);
+			sumDelta += max(delt1, delt2) / (min(delt1, delt2) + EPS);
+		}
+	}
+	sumDelta /= 2;							//???????????????? 是否要除以2 ????????????????????
 	for (int num = 0; num < SIZE; num++)
 	{
 		player1 = num;
@@ -421,7 +443,9 @@ void createLink(void)
 		} while (player_adjacency[player1][player2] != 0);
 		//if (player_degree[player2] >= 50)
 		//	continue;
-		femi = abs(player_payoff[player1] - player_payoff[player2]) / (max(player_degree[player1], player_degree[player2])*b + EPS);
+		delt11 = abs(player_payoff[player1] - meanFieldPayoff);
+		delt22 = abs(player_payoff[player2] - meanFieldPayoff);
+		femi = (max(delt11, delt22) / (min(delt11, delt22)+EPS)) / (sumDelta+EPS);
 		if (femi > randf())
 		{
 			player_adjacency[player1][player2] = 1;
@@ -436,142 +460,63 @@ void createLink(void)
 /****************************** 策略更新 **************************/
 void update(void)
 {
-	//更新记忆矩阵
-	static int count;
-	parallel_for(int(0), SIZE, [&](int k)
-	{
-		if (player_payoff[k] < player_payoff_virtual[k])
-		{
-			if (player_s[k] == 0)
-				player_memory[k][count] = 1;
-			else
-				player_memory[k][count] = 0;
-		}
-		else {
-			player_memory[k][count] = player_s[k];
-		}
-	});
-	count++;
-	if (count >= MEMORY)
-		count = 0;							//选取最优策略进行记忆
-	//更新策略
 	for (int i = 0; i < SIZE; i++)
 	{
-		double average = 0;
-		for (int j = 0; j < MEMORY; j++)
+		int j, k, choice;
+		int player1, player2;
+		int degree, degree1, degree2;
+		int numberOfNeighbour = 0;                            //统计邻居有多少个
+		int numberOfCount = 0;                                //统计数到了第几个邻居
+		double numberOfRandom = 0.0;                          //生成的随机数
+		double score1, score2, dscore;
+		double femi;
+
+		player1 = i;
+		for (j = 0; j<SIZE; j++)                           //统计有多少个邻居
 		{
-			average += player_memory[i][j];
+			if (player_adjacency[player1][j] != 0)
+			{
+				numberOfNeighbour++;
+			}
 		}
-		average /= MEMORY;					//记忆中背叛所占的比例
-		if (average > randf()) 
-			player_s[i] = 1;		//	选择背叛
-		else
-			player_s[i] = 0;		//	选择合作
+		if (numberOfNeighbour != 0)
+		{
+			numberOfRandom = randi(numberOfNeighbour) + 1;  //随机挑选邻居
+			for (k = 0; k<SIZE; k++)
+			{
+				if (player_adjacency[player1][k] != 0)
+				{
+					numberOfCount++;
+					if (numberOfCount >= numberOfRandom)
+					{
+						choice = k; break;                   //挑选好之后退出循环
+					}
+				}
+			}
+			player2 = choice;
+
+			degree1 = player_degree[player1];              //找到度大的节点
+			degree2 = player_degree[player2];
+			if (degree1 > degree2)
+				degree = degree1;
+			else
+				degree = degree2;
+			for (int num = 0; num < MEMORY; num++)
+			{
+				score1 += player_memory[player1][num];
+				score2 -= player_memory[player2][num];
+			}
+			score1 /= MEMORY;
+			score2 /= MEMORY;
+			if (player_s[player1] != player_s[player2])
+			{
+				dscore = score2 / degree - score1 / degree;				//在这一步中已经确定了，为负时候肯定不变，为正再看概率
+				femi = dscore / b;
+				if (femi>randf()) player_s[player1] = player_s[player2];
+			}
+		}
 	}
-	//for (int i = 0; i < SIZE; i++)
-	//{
-	//	int j, k, choice;
-	//	int player1, player2;
-	//	int degree, degree1, degree2;
-	//	int numberOfNeighbour = 0;                            //统计邻居有多少个
-	//	int numberOfCount = 0;                                //统计数到了第几个邻居
-	//	double numberOfRandom = 0.0;                          //生成的随机数
-	//	double score1, score2, dscore;
-	//	double femi;
 
-	//	player1 = i;
-	//	for (j = 0; j<SIZE; j++)                           //统计有多少个邻居
-	//	{
-	//		if (player_adjacency[player1][j] != 0)
-	//		{
-	//			numberOfNeighbour++;
-	//		}
-	//	}
-	//	if (numberOfNeighbour != 0)
-	//	{
-	//		numberOfRandom = randi(numberOfNeighbour) + 1;  //随机挑选邻居
-	//		for (k = 0; k<SIZE; k++)
-	//		{
-	//			if (player_adjacency[player1][k] != 0)
-	//			{
-	//				numberOfCount++;
-	//				if (numberOfCount >= numberOfRandom)
-	//				{
-	//					choice = k; break;                   //挑选好之后退出循环
-	//				}
-	//			}
-	//		}
-	//		player2 = choice;
-
-	//		degree1 = player_degree[player1];              //找到度大的节点
-	//		degree2 = player_degree[player2];
-	//		if (degree1 > degree2)
-	//			degree = degree1;
-	//		else
-	//			degree = degree2;
-	//		score1 = player_payoff[player1];
-	//		score2 = player_payoff[player2];
-	//		if (player_s[player1] != player_s[player2])
-	//		{
-	//			dscore = score2 / degree - score1 / degree;				//在这一步中已经确定了，为负时候肯定不变，为正再看概率
-	//			femi = dscore / b;
-	//			if (femi>randf()) player_s[player1] = player_s[player2];
-	//		}
-	//	}
-	//}
-
-
-	//parallel_for(int(0), SIZE, [&](int i)
-	//{
-	//	int j, k, choice;
-	//	int player1, player2;
-	//	int degree, degree1, degree2;
-	//	int numberOfNeighbour = 0;                            //统计邻居有多少个
-	//	int numberOfCount = 0;                                //统计数到了第几个邻居
-	//	double numberOfRandom = 0.0;                          //生成的随机数
-	//	double score1, score2, dscore;
-	//	double femi;
-
-	//	player1 = i;
-	//	for (j = 0; j<SIZE; j++)                           //统计有多少个邻居
-	//	{
-	//		if (player_adjacency[player1][j] != 0)
-	//		{
-	//			numberOfNeighbour++;
-	//		}
-	//	}
-	//	if (numberOfNeighbour != 0)
-	//	{
-	//		numberOfRandom = randi(numberOfNeighbour) + 1;  //随机挑选邻居
-	//		for (k = 0; k<SIZE; k++)
-	//		{
-	//			if (player_adjacency[player1][k] != 0)
-	//			{
-	//				numberOfCount++;
-	//				if (numberOfCount >= numberOfRandom)
-	//				{
-	//					choice = k; break;                   //挑选好之后推出循环
-	//				}
-	//			}
-	//		}
-	//		player2 = choice;
-
-	//		degree1 = player_degree[player1];              //找到度大的节点
-	//		degree2 = player_degree[player2];
-	//		if (degree1 > degree2)
-	//			degree = degree1;
-	//		else
-	//			degree = degree2;
-	//		score1 = player_payoff[player1];
-	//		score2 = player_payoff[player2];
-	//		if (player_s[player1] != player_s[player2])
-	//		{
-	//			dscore = score2 / degree - score1 / degree;				//在这一步中已经确定了，为负时候肯定不变，为正再看概率
-	//			femi = dscore / b;
-	//			if (femi>randf()) player_s[player1] = player_s[player2];
-	//		}
-	//	}
-	//});
 }
 
 /************************* 统计群体中各种策略的数目 **************************/
