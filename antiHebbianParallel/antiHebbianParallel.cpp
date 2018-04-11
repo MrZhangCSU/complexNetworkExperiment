@@ -615,7 +615,6 @@ void tongji(void)
 	meanFieldCooperatePayoff = (ratioOfCoperator * 1 + ratioOfDefector * 0) * averageDegree;
 	meanFieldCooperatePayoff = (ratioOfCoperator * b + ratioOfDefector * 0) * averageDegree;
 
-
 	
 
 
