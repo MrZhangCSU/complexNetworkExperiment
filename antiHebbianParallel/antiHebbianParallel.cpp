@@ -39,6 +39,7 @@ double ratioOfCoperator = 0;	//平均场中合作者比例
 double ratioOfDefector = 0;		//平均场中背叛者比例
 double meanFieldCooperatePayoff = 0.0;	//平均场合作者收益
 double meanFieldDefectePayoff = 0.0;	//平均场背叛者收益
+double meanFieldPayoff = 0.0;
 double averageDegree = 0.0;
 
 
@@ -332,38 +333,8 @@ void payoffCalculate(void)
 		player_payoff_virtual[i] = payoff_virtual(i);
 	});
 
-	//更新记忆矩阵
-	static int count = 0;
-	parallel_for(int(0), SIZE, [&](int k)
-	{
-		if(player_payoff[k] < player_payoff_virtual[k])
-		{
-			if(player_s[k] == 0)
-				player_memory[k][count] = 1;
-			else
-				player_memory[k][count] = 0;
-		}
-		else{
-			player_memory[k][count] = player_s[k];
-		}
-	});
-		// for(int i=0; i<SIZE; i++)
-		// {
-		// 	if(player_payoff[i] < player_payoff_virtual[i])
-		// 	{
-		// 		if(player_s[i] == 0)
-		// 			player_memory[i][count] = 1;
-		// 		else
-		// 			player_memory[i][count] = 0;
-		// 	}
-		// 	else
-		// 	{
-		// 		player_memory[i][count] = player_s[i];
-		// 	}
-		// }
-		count++;
-	if(count >= MEMORY)
-		count = 0;
+	
+
 }
 
 /*************** 计算该节点i的度 *********************/
@@ -465,6 +436,25 @@ void createLink(void)
 /****************************** 策略更新 **************************/
 void update(void)
 {
+	//更新记忆矩阵
+	static int count;
+	parallel_for(int(0), SIZE, [&](int k)
+	{
+		if (player_payoff[k] < player_payoff_virtual[k])
+		{
+			if (player_s[k] == 0)
+				player_memory[k][count] = 1;
+			else
+				player_memory[k][count] = 0;
+		}
+		else {
+			player_memory[k][count] = player_s[k];
+		}
+	});
+	count++;
+	if (count >= MEMORY)
+		count = 0;							//选取最优策略进行记忆
+	//更新策略
 	for (int i = 0; i < SIZE; i++)
 	{
 		double average = 0;
@@ -472,11 +462,11 @@ void update(void)
 		{
 			average += player_memory[i][j];
 		}
-		average /= MEMORY;
+		average /= MEMORY;					//记忆中背叛所占的比例
 		if (average > randf()) 
-			player_s[i] = 0;		//	选择合作
+			player_s[i] = 1;		//	选择背叛
 		else
-			player_s[i] = 1;
+			player_s[i] = 0;		//	选择合作
 	}
 	//for (int i = 0; i < SIZE; i++)
 	//{
@@ -614,9 +604,7 @@ void tongji(void)
 
 	meanFieldCooperatePayoff = (ratioOfCoperator * 1 + ratioOfDefector * 0) * averageDegree;
 	meanFieldCooperatePayoff = (ratioOfCoperator * b + ratioOfDefector * 0) * averageDegree;
-
-	
-
+	meanFieldPayoff = ratioOfCoperator*meanFieldCooperatePayoff + ratioOfDefector*meanFieldDefectePayoff;
 
 }
 
