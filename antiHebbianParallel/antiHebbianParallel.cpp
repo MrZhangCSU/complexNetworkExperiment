@@ -612,6 +612,10 @@ void tongji(void)
 	}
 	averageDegree = averageDegree / SIZE;		//计算平均度
 
+	meanFieldCooperatePayoff = (ratioOfCoperator * 1 + ratioOfDefector * 0) * averageDegree;
+	meanFieldCooperatePayoff = (ratioOfCoperator * b + ratioOfDefector * 0) * averageDegree;
+
+
 	
 
 
