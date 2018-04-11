@@ -858,6 +858,7 @@ int main(void)
 			tongji();
 			for (steps = 0; steps<MC_STEPS; steps++)
 			{
+				
 				update();                               //更新策略
 				createLink();                           //添加新连接
 				payoffCalculate();                      //计算节点收益
@@ -928,17 +929,6 @@ int main(void)
 	outfile4.close();
 	printf("This is the end\n");
 	return 0;
-
-
-
-
-
-
-
-
-
-
-
 
 	//int propor = 20000;
 	//initialAdjacency(propor);
